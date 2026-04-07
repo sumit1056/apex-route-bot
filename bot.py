@@ -1,5 +1,7 @@
 import os
 import json
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import gspread
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -216,6 +218,19 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 def main():
+    # Start a small health-check HTTP server on the PORT Render expects
+    port = int(os.environ.get("PORT", 10000))
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Apex Route Bot is running!")
+        def log_message(self, format, *args):
+            pass  # suppress noisy HTTP logs
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"Health check server listening on port {port}")
+
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(btn))
