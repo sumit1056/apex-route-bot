@@ -56,7 +56,7 @@ def kb(rows):
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ctx.user_data.clear()
     await update.message.reply_text(
-        "👋 *Welcome to Apex Route Logistics Tracker!*\nWhat would you like to do?",
+        "👋 *Welcome to Dreamline Logistics Tracker!*\nWhat would you like to do?",
         parse_mode="Markdown",
         reply_markup=kb([[
             InlineKeyboardButton("💰 Add Income",    callback_data="TYPE_Income"),
@@ -146,7 +146,7 @@ async def btn(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif d == "START_MENU":
         ctx.user_data.clear()
         await q.message.reply_text(
-            "👋 *Welcome to Apex Route Logistics Tracker!*\nWhat would you like to do?",
+            "👋 *Welcome to Dreamline Logistics Tracker!*\nWhat would you like to do?",
             parse_mode="Markdown",
             reply_markup=kb([[
                 InlineKeyboardButton("💰 Add Income",    callback_data="TYPE_Income"),
@@ -224,7 +224,7 @@ def main():
         def do_GET(self):
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b"Apex Route Bot is running!")
+            self.wfile.write(b"Dreamline Logistics Bot is running!")
         def log_message(self, format, *args):
             pass  # suppress noisy HTTP logs
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
@@ -235,7 +235,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(btn))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    print("Apex Route Bot is running...")
+    print("Dreamline Logistics Bot is running...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
