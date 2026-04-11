@@ -8,7 +8,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from google.oauth2.service_account import Credentials
 
-BOT_TOKEN  = os.environ.get("BOT_TOKEN", "8531728576:AAGvpCGkhk_zJwrY5eJD9jealbveAxns3yY")
+BOT_TOKEN  = os.environ.get("BOT_TOKEN", "7638823484:AAHHmbuhhYKmc_QFZZvLe7hf4GlYvWDTw3Y")
 SHEET_ID   = os.environ.get("SHEET_ID", "1bu5fls4crB6nQpLfLQgE3wGCdOdq3mr-9jws5foXctE")
 CREDS_JSON = os.environ.get("GOOGLE_CREDS")
 
