@@ -202,6 +202,28 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="START_MENU")]])
     )
 
+ADMIN_USER_IDS = os.environ.get("ADMIN_USER_IDS", "").split(",")
+ADMIN_USER_IDS = [int(i.strip()) for i in ADMIN_USER_IDS if i.strip().isdigit()]
+
+async def get_id(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    await update.message.reply_text(f"Your Telegram User ID is: `{user_id}`\n\nAdd this to the `ADMIN_USER_IDS` environment variable in Render (comma-separated if multiple) to receive system alerts.", parse_mode="Markdown")
+
+async def error_handler(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    error_msg = f"🚨 *SYSTEM ALERT*\n\nAn error occurred: `{ctx.error}`"
+    print(error_msg)
+    
+    # Send to all registered admins
+    for admin_id in ADMIN_USER_IDS:
+        try:
+            await ctx.bot.send_message(chat_id=admin_id, text=error_msg, parse_mode="Markdown")
+        except Exception as e:
+            print(f"Failed to send alert to {admin_id}: {e}")
+
+    # Notify user if the error happened during an interaction
+    if isinstance(update, Update) and update.effective_message:
+        await update.effective_message.reply_text("⚠️ A system error occurred. The administrator has been notified. Please try again later.")
+
 def main():
     # Only start health check server if SKIP_HEALTH_CHECK is not set
     if not os.environ.get("SKIP_HEALTH_CHECK"):
@@ -217,9 +239,16 @@ def main():
         print(f"Health check server started on port {port}")
 
     app = Application.builder().token(BOT_TOKEN).build()
+    
+    # Handlers
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("getid", get_id))
     app.add_handler(CallbackQueryHandler(btn))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    
+    # Error Handler
+    app.add_error_handler(error_handler)
+    
     print("Dreamline Logistics Bot is running with Supabase...")
     app.run_polling(drop_pending_updates=True)
 
