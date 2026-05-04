@@ -207,21 +207,24 @@ if not df.empty:
     with chart_col2:
         st.subheader("🏷️ Category Mix")
         cat_data = df[df['type'] == 'Expense'].groupby('category')['total_amount'].sum().reset_index()
-        fig_pie = px.pie(
-            cat_data, 
-            values='total_amount', 
-            names='category',
-            hole=0.6,
-            color_discrete_sequence=px.colors.sequential.Gold_r,
-            template='plotly_dark'
-        )
-        fig_pie.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=0, r=0, t=30, b=0),
-            showlegend=False
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
+        if not cat_data.empty:
+            fig_pie = px.pie(
+                cat_data, 
+                values='total_amount', 
+                names='category',
+                hole=0.6,
+                color_discrete_sequence=px.colors.sequential.YlOrBr_r,
+                template='plotly_dark'
+            )
+            fig_pie.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=0, r=0, t=30, b=0),
+                showlegend=False
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("No expense data for pie chart.")
 
     # --- RECENT TRANSACTIONS ---
     st.markdown("<br>", unsafe_allow_html=True)
