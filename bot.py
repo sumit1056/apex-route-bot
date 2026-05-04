@@ -1,54 +1,48 @@
 import os
-import json
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import gspread
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from google.oauth2.service_account import Credentials
+from supabase import create_client, Client
 
-BOT_TOKEN  = os.environ.get("BOT_TOKEN", "7638823484:AAHHmbuhhYKmc_QFZZvLe7hf4GlYvWDTw3Y")
-SHEET_ID   = os.environ.get("SHEET_ID", "1bu5fls4crB6nQpLfLQgE3wGCdOdq3mr-9jws5foXctE")
-CREDS_JSON = os.environ.get("GOOGLE_CREDS")
+# Environment Variables
+BOT_TOKEN    = os.environ.get("BOT_TOKEN", "7638823484:AAHHmbuhhYKmc_QFZZvLe7hf4GlYvWDTw3Y")
+SUPABASE_URL  = os.environ.get("SUPABASE_URL", "https://dlkgqtuucwflmsakacln.supabase.co")
+SUPABASE_KEY  = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsa2dxdHV1Y3dmbG1zYWthY2xuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzg5Mjg0OCwiZXhwIjoyMDkzNDY4ODQ4fQ.Cx2VeTIee_thOOaIvnqpwkQzW-GwgKuugT400l09duA")
 
 INCOME_CATS  = ["Vendor/DCO", "Porter", "Factory"]
 EXPENSE_CATS = ["CNG/Petrol", "Maintenance", "Driver Expense", "EMI", "Credit Card Bill", "Other"]
 
-def get_sheet(tab_name):
-    creds_dict = json.loads(CREDS_JSON)
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds  = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    client = gspread.authorize(creds)
-    return client.open_by_key(SHEET_ID).worksheet(tab_name)
+# Initialize Supabase Client
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def save_income(category, payment, amount, remarks=""):
-    ws   = get_sheet("Income")
+def save_entry(entry_type, category, payment, amount, remarks=""):
     now  = datetime.now()
-    date = now.strftime("%d/%m/%Y")
+    date = now.strftime("%Y-%m-%d")
     time = now.strftime("%H:%M:%S")
-    rows = ws.get_all_values()
-    bank_amt = amount if payment == "UPI"  else ""
-    cash_amt = amount if payment == "Cash" else ""
-    ws.insert_row([len(rows)-2, date, time, category, payment, bank_amt, cash_amt, remarks], len(rows))
-
-def save_expense(category, payment, amount, remarks=""):
-    ws   = get_sheet("Expenses")
-    now  = datetime.now()
-    date = now.strftime("%d/%m/%Y")
-    time = now.strftime("%H:%M:%S")
-    rows = ws.get_all_values()
-    bank_amt   = amount if payment == "UPI"         else ""
-    cash_amt   = amount if payment == "Cash"        else ""
-    credit_amt = amount if payment == "Credit Card" else ""
-    ws.insert_row([len(rows)-2, date, time, category, payment, bank_amt, cash_amt, credit_amt, remarks], len(rows))
+    
+    bank_amt   = float(amount) if payment == "UPI"         else 0.0
+    cash_amt   = float(amount) if payment == "Cash"        else 0.0
+    credit_amt = float(amount) if payment == "Credit Card" else 0.0
+    
+    data = {
+        "date": date,
+        "time": time,
+        "type": entry_type,
+        "category": category,
+        "payment_method": payment,
+        "bank_amount": bank_amt,
+        "cash_amount": cash_amt,
+        "credit_amount": credit_amt,
+        "remarks": remarks
+    }
+    
+    supabase.table("entries").insert(data).execute()
 
 def wipe_all():
-    for tab in ["Income", "Expenses"]:
-        ws   = get_sheet(tab)
-        rows = ws.get_all_values()
-        if len(rows) > 4:
-            ws.delete_rows(5, len(rows))
+    # Deleting all rows (caution: this is for testing/wipe command)
+    supabase.table("entries").delete().neq("id", 0).execute()
 
 def kb(rows):
     return InlineKeyboardMarkup(rows)
@@ -62,7 +56,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("💰 Add Income",    callback_data="TYPE_Income"),
             InlineKeyboardButton("💸 Add Expense",   callback_data="TYPE_Expense"),
         ],[
-            InlineKeyboardButton("🗑 Wipe Test Data", callback_data="WIPE_CONFIRM"),
+            InlineKeyboardButton("🗑 Wipe All Data", callback_data="WIPE_CONFIRM"),
         ]])
     )
 
@@ -96,7 +90,7 @@ async def btn(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif d.startswith("CAT_"):
         cat = d.replace("CAT_", "")
         ctx.user_data["category"] = cat
-        if cat == "CNG/Petrol":
+        if cat == "CNG/Petrol" or ctx.user_data.get("type") == "Expense":
             pay_btns = kb([[
                 InlineKeyboardButton("💳 Credit Card", callback_data="PAY_Credit Card"),
                 InlineKeyboardButton("🏦 UPI",         callback_data="PAY_UPI"),
@@ -125,7 +119,7 @@ async def btn(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     elif d == "WIPE_CONFIRM":
         await q.message.reply_text(
-            "⚠️ *Are you sure?*\nThis will delete ALL entries from Income and Expenses.",
+            "⚠️ *Are you sure?*\nThis will delete ALL entries from the database.",
             parse_mode="Markdown",
             reply_markup=kb([[
                 InlineKeyboardButton("✅ Yes, Wipe All", callback_data="WIPE_YES"),
@@ -136,7 +130,7 @@ async def btn(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif d == "WIPE_YES":
         try:
             wipe_all()
-            await q.message.reply_text("✅ *All test data wiped!* Sheets are clean.\n\nTap /start to begin fresh.", parse_mode="Markdown")
+            await q.message.reply_text("✅ *All data wiped!* Database is clean.\n\nTap /start to begin fresh.", parse_mode="Markdown")
         except Exception as e:
             await q.message.reply_text(f"❌ Error: {str(e)}")
 
@@ -152,7 +146,7 @@ async def btn(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("💰 Add Income",    callback_data="TYPE_Income"),
                 InlineKeyboardButton("💸 Add Expense",   callback_data="TYPE_Expense"),
             ],[
-                InlineKeyboardButton("🗑 Wipe Test Data", callback_data="WIPE_CONFIRM"),
+                InlineKeyboardButton("🗑 Wipe All Data", callback_data="WIPE_CONFIRM"),
             ]])
         )
 
@@ -166,39 +160,30 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please tap /start to begin a new entry.")
         return
 
-    # Check if we are waiting for amount or remarks
     if "amount" not in ctx.user_data:
         try:
             amount = float(text)
             if amount <= 0: raise ValueError
             ctx.user_data["amount"] = amount
-            
-            # Prompt for remarks
             await update.message.reply_text(
                 f"✅ Amount saved: *₹{amount:,.0f}*\n\n"
-                f"Now type a short **Remark/Note** (e.g. 'Invoice #123' or 'Fuel at HP').\n"
+                f"Now type a short **Remark/Note**.\n"
                 f"If you don't want to add a note, just type `-` or `skip`.",
                 parse_mode="Markdown"
             )
             return
-
         except ValueError:
-            await update.message.reply_text("⚠️ Please enter a valid positive number.\nExample: *1500*", parse_mode="Markdown")
+            await update.message.reply_text("⚠️ Please enter a valid positive number.", parse_mode="Markdown")
             return
             
-    # If we already have amount, this must be remarks
     remarks = text if text.lower() not in ["-", "skip", "no", "none"] else ""
     amount  = ctx.user_data["amount"]
 
-    # Save to sheets
     try:
-        await update.message.reply_text("⏳ Saving to Google Sheets...")
-        if entry_type == "Income":
-            save_income(category, payment, amount, remarks)
-        else:
-            save_expense(category, payment, amount, remarks)
+        await update.message.reply_text("⏳ Saving to Supabase...")
+        save_entry(entry_type, category, payment, amount, remarks)
     except Exception as e:
-        await update.message.reply_text(f"❌ Error saving to sheet: {str(e)}\n\nPlease try again.")
+        await update.message.reply_text(f"❌ Error saving to database: {str(e)}\n\nPlease try again.")
         return
 
     ctx.user_data.clear()
@@ -218,24 +203,21 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 def main():
-    # Start a small health-check HTTP server on the PORT Render expects
     port = int(os.environ.get("PORT", 10000))
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"Dreamline Logistics Bot is running!")
-        def log_message(self, format, *args):
-            pass  # suppress noisy HTTP logs
+        def log_message(self, format, *args): pass
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"Health check server listening on port {port}")
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(btn))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    print("Dreamline Logistics Bot is running...")
+    print("Dreamline Logistics Bot is running with Supabase...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
