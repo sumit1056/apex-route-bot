@@ -224,6 +224,10 @@ async def error_handler(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(update, Update) and update.effective_message:
         await update.effective_message.reply_text("⚠️ A system error occurred. The administrator has been notified. Please try again later.")
 
+async def test_alert(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🧪 Triggering a test alert...")
+    raise Exception("This is a planned test of the Dreamline Alert System. If you are reading this, the notification system is working perfectly! ✅")
+
 def main():
     # Only start health check server if SKIP_HEALTH_CHECK is not set
     if not os.environ.get("SKIP_HEALTH_CHECK"):
@@ -243,6 +247,7 @@ def main():
     # Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("getid", get_id))
+    app.add_handler(CommandHandler("test_alert", test_alert))
     app.add_handler(CallbackQueryHandler(btn))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     
