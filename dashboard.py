@@ -1,111 +1,260 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from supabase import create_client, Client
 import os
+from datetime import datetime
 
 # Page config
-st.set_page_config(page_title="Dreamline Logistics | Executive Dashboard", layout="wide")
+st.set_page_config(
+    page_title="Dreamline Logistics | Executive Insights",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Theme / CSS for Executive Dark Mode
+# --- CUSTOM CSS FOR PREMIUM LOOK ---
 st.markdown("""
     <style>
-    [data-testid="stAppViewContainer"] {
-        background-color: #0E1117;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+    html, body, [data-testid="stAppViewContainer"] {
+        font-family: 'Inter', sans-serif;
+        background-color: #0A0C10;
         color: #E0E0E0;
     }
-    .main {
-        background-color: #0E1117;
+
+    /* Glassmorphism Card Style */
+    .metric-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        padding: 24px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        transition: transform 0.3s ease;
     }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        border-color: #D4AF37;
+    }
+
+    /* Titles */
     h1, h2, h3 {
-        color: #D4AF37 !important; /* Gold */
-        font-family: 'Inter', sans-serif;
+        color: #D4AF37 !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.5px;
     }
-    .stMetric {
-        background-color: #1E222D;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #D4AF37;
+
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #0F1218;
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
     }
-    [data-testid="stMetricValue"] {
-        color: #FFFFFF !important;
-    }
-    .stDataFrame {
-        border: 1px solid #333;
-    }
-    /* Hide Streamlit branding */
+
+    /* Hide Streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #0A0C10;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #D4AF37;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # Supabase Setup
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://dlkgqtuucwflmsakacln.supabase.co")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsa2dxdHV1Y3dmbG1zYWthY2xuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTI4NDgsImV4cCI6MjA5MzQ2ODg0OH0.FKSY73XgIL0WoBoBosl8WsH-MvXMi6rvoN340FdJACc") # Dashboard uses anon key
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsa2dxdHV1Y3dmbG1zYWthY2xuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTI4NDgsImV4cCI6MjA5MzQ2ODg0OH0.FKSY73XgIL0WoBoBosl8WsH-MvXMi6rvoN340FdJACc")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+@st.cache_data(ttl=60)
 def get_data():
-    res = supabase.table("entries").select("*").order("date", desc=True).order("time", desc=True).execute()
-    return pd.DataFrame(res.data)
+    try:
+        res = supabase.table("entries").select("*").order("date", desc=True).order("time", desc=True).execute()
+        df = pd.DataFrame(res.data)
+        if not df.empty:
+            df['date'] = pd.to_datetime(df['date'])
+            for col in ['bank_amount', 'cash_amount', 'credit_amount']:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            df['total_amount'] = df['bank_amount'] + df['cash_amount'] + df['credit_amount']
+        return df
+    except Exception as e:
+        st.error(f"Error fetching data: {e}")
+        return pd.DataFrame()
 
-# Header
-st.title("🏆 Dreamline Logistics Executive Dashboard")
-st.write("Real-time financial overview and operations tracking.")
+# --- SIDEBAR ---
+with st.sidebar:
+    st.markdown("<h1 style='text-align: center; font-size: 24px;'>DREAMLINE</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #888;'>LOGISTICS TRACKER</p>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    st.subheader("🛠️ Control Panel")
+    if st.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+    
+    st.markdown("---")
+    st.subheader("🔍 Filters")
+    
+    df_raw = get_data()
+    
+    if not df_raw.empty:
+        types = st.multiselect("Entry Types", options=df_raw['type'].unique(), default=df_raw['type'].unique())
+        categories = st.multiselect("Categories", options=df_raw['category'].unique(), default=df_raw['category'].unique())
+        
+        # Date range
+        min_date = df_raw['date'].min().date()
+        max_date = df_raw['date'].max().date()
+        date_range = st.date_input("Date Range", value=(min_date, max_date), min_value=min_date, max_value=max_date)
+        
+        # Apply filters
+        df = df_raw[
+            (df_raw['type'].isin(types)) & 
+            (df_raw['category'].isin(categories))
+        ]
+        if len(date_range) == 2:
+            df = df[(df['date'].dt.date >= date_range[0]) & (df['date'].dt.date <= date_range[1])]
+    else:
+        df = df_raw
 
-# Load Data
-df = get_data()
+# --- MAIN CONTENT ---
+st.markdown("<h1 style='margin-bottom: 0;'>📈 Executive Insights</h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #888; font-size: 18px;'>Financial Performance Overview</p>", unsafe_allow_html=True)
 
 if not df.empty:
-    # Ensure numeric columns are properly typed
-    for col in ['bank_amount', 'cash_amount', 'credit_amount']:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+    # --- KPI CALCULATIONS ---
+    total_income = df[df['type'] == 'Income']['total_amount'].sum()
+    total_expense = df[df['type'] == 'Expense']['total_amount'].sum()
+    net_profit = total_income - total_expense
+    margin = (net_profit / total_income * 100) if total_income > 0 else 0
     
-    # Calculations
-    total_income  = df[df['type'] == 'Income']['bank_amount'].sum() + df[df['type'] == 'Income']['cash_amount'].sum()
-    total_expense = df[df['type'] == 'Expense']['bank_amount'].sum() + df[df['type'] == 'Expense']['cash_amount'].sum() + df[df['type'] == 'Expense']['credit_amount'].sum()
-    net_profit    = total_income - total_expense
+    # KPI Row
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     
-    # Metrics Row
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Income", f"₹{total_income:,.2f}", delta_color="normal")
-    with col2:
-        st.metric("Total Expenses", f"₹{total_expense:,.2f}", delta_color="inverse")
-    with col3:
-        profit_color = "normal" if net_profit >= 0 else "inverse"
-        st.metric("Net Profit", f"₹{net_profit:,.2f}", delta_color=profit_color)
+    with kpi1:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <p style='color: #888; margin:0;'>Total Revenue</p>
+                <h2 style='margin:0;'>₹{total_income:,.0f}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with kpi2:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <p style='color: #888; margin:0;'>Total Expenses</p>
+                <h2 style='margin:0; color: #FF4B4B !important;'>₹{total_expense:,.0f}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with kpi3:
+        p_color = "#D4AF37" if net_profit >= 0 else "#FF4B4B"
+        st.markdown(f"""
+            <div class='metric-card'>
+                <p style='color: #888; margin:0;'>Net Profit</p>
+                <h2 style='margin:0; color: {p_color} !important;'>₹{net_profit:,.0f}</h2>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with kpi4:
+        st.markdown(f"""
+            <div class='metric-card'>
+                <p style='color: #888; margin:0;'>Profit Margin</p>
+                <h2 style='margin:0;'>{margin:.1f}%</h2>
+            </div>
+        """, unsafe_allow_html=True)
 
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    # Filters
-    st.sidebar.header("Filter Data")
-    type_filter = st.sidebar.multiselect("Entry Type", options=df['type'].unique(), default=df['type'].unique())
-    cat_filter  = st.sidebar.multiselect("Category", options=df['category'].unique(), default=df['category'].unique())
+    # --- CHARTS SECTION ---
+    chart_col1, chart_col2 = st.columns([2, 1])
     
-    filtered_df = df[df['type'].isin(type_filter) & df['category'].isin(cat_filter)]
+    with chart_col1:
+        st.subheader("📅 Financial Trends")
+        # Group by date and type
+        daily_trend = df.groupby(['date', 'type'])['total_amount'].sum().reset_index()
+        fig_trend = px.line(
+            daily_trend, 
+            x='date', 
+            y='total_amount', 
+            color='type',
+            color_discrete_map={'Income': '#D4AF37', 'Expense': '#FF4B4B'},
+            template='plotly_dark',
+            line_shape='spline'
+        )
+        fig_trend.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis_title="",
+            yaxis_title="",
+            margin=dict(l=0, r=0, t=10, b=0),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_trend, use_container_width=True)
 
-    # Data Table
-    st.subheader("📋 Recent Transactions")
+    with chart_col2:
+        st.subheader("🏷️ Category Mix")
+        cat_data = df[df['type'] == 'Expense'].groupby('category')['total_amount'].sum().reset_index()
+        fig_pie = px.pie(
+            cat_data, 
+            values='total_amount', 
+            names='category',
+            hole=0.6,
+            color_discrete_sequence=px.colors.sequential.Gold_r,
+            template='plotly_dark'
+        )
+        fig_pie.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=30, b=0),
+            showlegend=False
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    # --- RECENT TRANSACTIONS ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("📋 Detailed Records")
     
-    # Display table with styling
+    # Styled Table
+    def color_type(val):
+        color = '#D4AF37' if val == 'Income' else '#FF4B4B'
+        return f'color: {color}; font-weight: bold;'
+
+    display_df = df[['date', 'time', 'type', 'category', 'payment_method', 'total_amount', 'remarks']]
+    display_df['date'] = display_df['date'].dt.strftime('%Y-%m-%d')
+    
     st.dataframe(
-        filtered_df[['date', 'time', 'type', 'category', 'payment_method', 'bank_amount', 'cash_amount', 'credit_amount', 'remarks']],
+        display_df,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        column_config={
+            "total_amount": st.column_config.NumberColumn("Amount", format="₹%d"),
+            "type": st.column_config.TextColumn("Type"),
+            "category": st.column_config.TextColumn("Category"),
+            "payment_method": st.column_config.TextColumn("Method"),
+        }
     )
-    
-    # Summary of Categories
-    st.subheader("📊 Category-wise Breakdown")
-    cat_summary = filtered_df.groupby('category').agg({
-        'bank_amount': 'sum',
-        'cash_amount': 'sum',
-        'credit_amount': 'sum'
-    })
-    cat_summary['Total'] = cat_summary.sum(axis=1)
-    st.table(cat_summary.sort_values('Total', ascending=False))
 
 else:
-    st.warning("No data found in the database. Start adding entries via the Telegram bot!")
+    st.info("👋 No data matching your filters. Try adjusting the date range or adding entries via Telegram!")
+    st.markdown("""
+        <div style='text-align: center; padding: 50px;'>
+            <h3 style='color: #555 !important;'>Start by sending /start to your Telegram Bot</h3>
+        </div>
+    """, unsafe_allow_html=True)
 
-if st.button("🔄 Refresh Data"):
-    st.rerun()
+# Footer
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: #444;'>© 2026 Dreamline Logistics | Powered by Supabase & Streamlit</p>", unsafe_allow_html=True)
