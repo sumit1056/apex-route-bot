@@ -203,15 +203,18 @@ async def text_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 def main():
-    port = int(os.environ.get("PORT", 10000))
-    class HealthHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"Dreamline Logistics Bot is running!")
-        def log_message(self, format, *args): pass
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    # Only start health check server if SKIP_HEALTH_CHECK is not set
+    if not os.environ.get("SKIP_HEALTH_CHECK"):
+        port = int(os.environ.get("PORT", 10000))
+        class HealthHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"Dreamline Logistics Bot is running!")
+            def log_message(self, format, *args): pass
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print(f"Health check server started on port {port}")
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
